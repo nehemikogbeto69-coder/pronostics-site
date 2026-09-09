@@ -231,3 +231,79 @@ def test_get_returns_the_response_list():
     rows = [{"fixture": {"id": 5}}]
     prov = make_provider([FakeResponse(200, {"response": rows})])
     assert prov.get("/fixtures") == rows
+
+
+# ---------------------------------------------------------------------------
+# Choix de la saison (le plan gratuit est limité à 2022-2024)
+# ---------------------------------------------------------------------------
+def test_season_uses_the_configured_override(monkeypatch):
+    """API_FOOTBALL_SEASON doit primer sur la saison courante."""
+    from app.providers import apifootball as af
+
+    monkeypatch.setattr(af, "API_FOOTBALL_SEASON", 2023)
+    assert af._season() == 2023
+
+
+def test_season_falls_back_to_current_when_unset(monkeypatch):
+    """Sans override, on retombe sur la saison courante (année n si mois >= 7)."""
+    from datetime import datetime, timezone
+
+    from app.providers import apifootball as af
+
+    monkeypatch.setattr(af, "API_FOOTBALL_SEASON", None)
+
+    class FakeDateTime(datetime):
+        _fixed = None
+
+        @classmethod
+        def now(cls, tz=None):
+            return cls._fixed
+
+    FakeDateTime._fixed = datetime(2026, 9, 9, tzinfo=timezone.utc)
+    monkeypatch.setattr(af, "datetime", FakeDateTime)
+    assert af._season() == 2026
+
+    FakeDateTime._fixed = datetime(2026, 3, 15, tzinfo=timezone.utc)
+    assert af._season() == 2025, "avant juillet, la saison en cours est l'année précédente"
+
+
+def test_plan_error_is_translated_into_an_actionable_message():
+    """L'erreur 'Free plans do not have access to this season' doit être explicite."""
+    prov = make_provider([FakeResponse(200, {
+        "errors": {"plan": "Free plans do not have access to this season, try from 2022 to 2024."},
+        "response": [],
+    })])
+    ok, msg = prov.health_check()
+    assert ok is False
+    assert "API_FOOTBALL_SEASON" in msg, "le message doit dire quoi régler"
+    assert "2023" in msg, "le message doit proposer une saison utilisable"
+    assert "plan gratuit" in msg
+
+
+def test_plan_error_mentions_the_free_season_range():
+    prov = make_provider([FakeResponse(200, {
+        "errors": {"plan": "Free plans do not have access to this season."},
+        "response": [],
+    })])
+    _, msg = prov.health_check()
+    for saison in (2022, 2023, 2024):
+        assert str(saison) in msg
+
+
+def test_list_seasons_normalises_the_response():
+    rows = [
+        {"season": 2023, "start": "2023-08-11", "end": "2024-05-19", "current": False},
+        {"season": 2026, "start": "2026-08-15", "end": "2027-05-23", "current": True},
+    ]
+    prov = make_provider([FakeResponse(200, {"response": rows})])
+    got = prov.list_seasons(39)
+    assert len(got) == 2
+    assert got[1]["current"] is True
+    assert got[0]["season"] == 2023
+
+
+def test_list_seasons_tolerates_junk_entries():
+    prov = make_provider([FakeResponse(200, {"response": ["texte", None, {"season": 2023}]})])
+    got = prov.list_seasons(39)
+    assert len(got) == 1
+    assert got[0]["season"] == 2023

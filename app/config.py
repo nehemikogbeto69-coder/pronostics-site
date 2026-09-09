@@ -47,6 +47,28 @@ if API_FOOTBALL_KEY and DATA_MODE == "demo":
 
 API_FOOTBALL_HOST = os.getenv("API_FOOTBALL_HOST", "v3.football.api-sports.io")
 
+# ---------------------------------------------------------------------------
+# Saison interrogée
+# ---------------------------------------------------------------------------
+# ⚠️ Le plan gratuit d'API-Football ne donne accès qu'aux saisons 2022 à 2024.
+#    Demander la saison en cours renvoie :
+#      {'plan': 'Free plans do not have access to this season,
+#                try from 2022 to 2024.'}
+#
+# Deux conséquences à connaître :
+#   - une saison passée est entièrement jouée : il n'y a donc AUCUN match à
+#     venir à afficher. Le site sert alors à valider le modèle sur des données
+#     réelles via /api/backtest, ce qui reste très utile.
+#   - pour afficher des matchs à venir, il faut un plan payant et laisser
+#     cette variable vide (saison courante calculée automatiquement).
+#
+# Laissez vide pour utiliser la saison courante.
+_season_env = os.getenv("API_FOOTBALL_SEASON", "2023").strip()
+API_FOOTBALL_SEASON: int | None = int(_season_env) if _season_env else None
+
+# Saisons accessibles avec le plan gratuit, pour les messages d'aide.
+API_FOOTBALL_FREE_SEASONS = (2022, 2023, 2024)
+
 # Rythme de la tâche planifiée, en minutes (défaut : 60 min).
 SYNC_INTERVAL_MINUTES = int(os.getenv("PRONOLAB_SYNC_MINUTES", "60"))
 

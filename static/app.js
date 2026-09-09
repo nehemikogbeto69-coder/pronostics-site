@@ -70,6 +70,14 @@ async function loadMeta() {
   $("#disclaimer").textContent = state.meta.disclaimer;
   $("#banner-demo").hidden = !state.meta.demo;
 
+  // Bandeau « saison historique » : une saison passée n'a aucun match à venir.
+  const hist = state.meta.season_is_historical && !state.meta.demo;
+  $("#banner-season").hidden = !hist;
+  if (hist) {
+    $("#season-year").textContent = state.meta.season;
+    $("#free-seasons").textContent = (state.meta.free_seasons || []).join(", ");
+  }
+
   const select = $("#league-select");
   select.innerHTML = '<option value="">Toutes</option>';
   for (const lg of state.meta.leagues) {
@@ -377,6 +385,68 @@ function matrixTable(matrix, topScore) {
   return html;
 }
 
+/* ------------------------------------------------- résultats connus */
+async function loadResults() {
+  const box = $("#results");
+  if (state.sport !== "football") {
+    $("#results-section").hidden = true;
+    return;
+  }
+  $("#results-section").hidden = false;
+  box.innerHTML = '<p class="empty small">Chargement…</p>';
+
+  const leagueId = state.league || (state.meta?.leagues?.[0]?.id ?? 39);
+  try {
+    const d = await api(`/api/results?league_id=${leagueId}&last_n=25`);
+    $("#results-count").textContent =
+      d.count ? `${d.count} matchs · ${d.season ? "saison " + d.season : ""}` : "";
+
+    if (!d.count) {
+      box.innerHTML = `<p class="empty small">
+        Aucun match joué disponible pour cette ligue.
+        <br><span class="small">Lancez une synchronisation, ou vérifiez la saison configurée.</span>
+      </p>`;
+      return;
+    }
+
+    const rows = d.matches.map((m) => {
+      const pickName = m.pick === "1" ? m.home : (m.pick === "2" ? m.away : "Nul");
+      const cls = m.hit ? "hit" : "miss";
+      return `
+        <tr>
+          <td class="num small">${m.date}</td>
+          <td>${m.home} <span class="muted">–</span> ${m.away}</td>
+          <td class="num"><strong>${m.score}</strong></td>
+          <td class="num">${num(m.lambda_home)}–${num(m.lambda_away)}</td>
+          <td class="num">${pct(m.p_home, 0)} / ${pct(m.p_draw, 0)} / ${pct(m.p_away, 0)}</td>
+          <td class="${cls}">${m.pick === "X" ? "Nul" : pickName}</td>
+          <td class="num">${num(m.confidence, 0)} %</td>
+          <td class="num">${m.score_hit ? "✓" : m.top_score}</td>
+        </tr>`;
+    }).join("");
+
+    const acc = d.accuracy != null ? (d.accuracy * 100).toFixed(1) + " %" : "—";
+    const base = d.baseline_accuracy != null ? (d.baseline_accuracy * 100).toFixed(1) + " %" : "—";
+
+    box.innerHTML = `
+      <div class="metric-grid">
+        <div class="metric ${d.accuracy >= 0.5 ? "good" : ""}">
+          <div class="v">${acc}</div><div class="k">Pronostics justes</div>
+        </div>
+        <div class="metric"><div class="v">${base}</div><div class="k">Référence « domicile »</div></div>
+      </div>
+      <table class="data">
+        <thead><tr>
+          <th>Date</th><th>Match</th><th>Score</th><th>xG</th>
+          <th>1 / X / 2</th><th>Pronostic</th><th>Conf.</th><th>Score visé</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  } catch (err) {
+    box.innerHTML = `<p class="empty small">Erreur : ${err.message}</p>`;
+  }
+}
+
 /* ------------------------------------------------------- classement */
 async function loadStandings() {
   const box = $("#standings");
@@ -479,6 +549,7 @@ function bind() {
       state.sport = tab.dataset.sport;
       $("#league-select").disabled = state.sport !== "football";
       loadMatches();
+      loadResults();
       loadBacktest();
     });
   });
@@ -486,7 +557,7 @@ function bind() {
   $("#league-select").addEventListener("change", (e) => {
     state.league = e.target.value;
     loadMatches();
-    if (state.sport === "football") { loadStandings(); loadBacktest(); }
+    if (state.sport === "football") { loadResults(); loadStandings(); loadBacktest(); }
   });
 
   $("#days-select").addEventListener("change", (e) => {
@@ -511,7 +582,7 @@ function bind() {
     btn.textContent = "Synchronisation…";
     try {
       await api("/api/sync", { method: "POST" });
-      await Promise.all([loadMeta(), loadMatches(), loadStandings(), loadBacktest(), loadHealth()]);
+      await Promise.all([loadMeta(), loadMatches(), loadResults(), loadStandings(), loadBacktest(), loadHealth()]);
     } catch (err) {
       alert("Échec de la synchronisation : " + err.message);
     } finally {
@@ -528,7 +599,7 @@ function bind() {
   bind();
   try {
     await loadMeta();
-    await Promise.all([loadMatches(), loadStandings(), loadBacktest(), loadHealth()]);
+    await Promise.all([loadMatches(), loadResults(), loadStandings(), loadBacktest(), loadHealth()]);
   } catch (err) {
     $("#matches").innerHTML = `<p class="empty">Démarrage impossible : ${err.message}</p>`;
   }

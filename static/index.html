@@ -43,6 +43,15 @@
   <code>API_FOOTBALL_KEY=votre_cle</code>
 </div>
 
+<div class="banner-season" id="banner-season" hidden>
+  <strong>Saison historique <span id="season-year"></span>.</strong>
+  Le plan gratuit d'API-Football ne couvre que les saisons
+  <span id="free-seasons"></span>. Cette saison étant terminée, il n'y a
+  <u>aucun match à venir</u> — c'est normal. Le site évalue alors le modèle sur
+  des résultats connus, dans la section ci-dessous. Pour afficher des matchs à
+  venir, il faut un plan payant et laisser <code>API_FOOTBALL_SEASON</code> vide.
+</div>
+
 <nav class="filters">
   <div class="tabs" id="sport-tabs" role="tablist">
     <button class="tab active" data-sport="football" role="tab">Football</button>
@@ -91,6 +100,18 @@
     <div id="matches" class="matches" aria-live="polite">
       <p class="empty">Chargement…</p>
     </div>
+  </section>
+
+  <section id="results-section">
+    <div class="section-head">
+      <h2>Le modèle face aux résultats connus</h2>
+      <span class="muted" id="results-count"></span>
+    </div>
+    <p class="muted small" style="margin:-6px 0 12px">
+      Chaque pronostic est recalculé à partir des matchs strictement antérieurs :
+      le match testé n'influence jamais sa propre prédiction.
+    </p>
+    <div id="results"></div>
   </section>
 
   <section id="tools-section">

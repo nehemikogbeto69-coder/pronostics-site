@@ -24,7 +24,13 @@ from typing import Any
 
 import httpx
 
-from ..config import API_FOOTBALL_HOST, API_FOOTBALL_KEY, FORM_WINDOW
+from ..config import (
+    API_FOOTBALL_FREE_SEASONS,
+    API_FOOTBALL_HOST,
+    API_FOOTBALL_KEY,
+    API_FOOTBALL_SEASON,
+    FORM_WINDOW,
+)
 from .base import (
     BaseProvider,
     FixtureDTO,
@@ -111,7 +117,19 @@ class APIFootballProvider(BaseProvider):
             raise APIFootballError(f"Réponse non-JSON sur {path}") from exc
 
         if body.get("errors"):
-            raise APIFootballError(f"API-Football : {body['errors']}")
+            errs = body["errors"]
+            # Le refus de saison est l'erreur la plus fréquente en plan gratuit :
+            # on la traduit en instruction actionnable plutôt qu'en dict brut.
+            texte = str(errs)
+            if "plan" in errs if isinstance(errs, dict) else "plan" in texte:
+                saisons = ", ".join(str(s) for s in API_FOOTBALL_FREE_SEASONS)
+                raise APIFootballError(
+                    f"accès refusé par le plan : {texte}. Le plan gratuit ne "
+                    f"couvre que les saisons {saisons}. Réglez "
+                    f"API_FOOTBALL_SEASON sur l'une d'elles (2023 par défaut), "
+                    f"ou passez sur un plan payant pour la saison en cours."
+                )
+            raise APIFootballError(f"API-Football : {texte}")
 
         data = body.get("response", [])
         self._cache[cache_key] = data
@@ -170,6 +188,24 @@ class APIFootballProvider(BaseProvider):
             quota = ""
 
         return True, f"clé valide — compte {nom}, offre {subscription}{quota}"
+
+    def list_seasons(self, league_id: int) -> list[dict]:
+        """Saisons disponibles pour une ligue.
+
+        Coûte 1 requête. Permet de vérifier quelles saisons votre plan autorise
+        avant de régler API_FOOTBALL_SEASON.
+        """
+        rows = self.get("/fixtures/seasons", league=league_id)
+        out = []
+        for r in rows:
+            if isinstance(r, dict):
+                out.append({
+                    "season": r.get("season"),
+                    "start": r.get("start"),
+                    "end": r.get("end"),
+                    "current": bool(r.get("current")),
+                })
+        return out
 
     # ------------------------------------------------------------------
     # Matchs
@@ -389,7 +425,17 @@ def _first_dict(data: object) -> dict | None:
 
 
 def _season() -> int:
-    """Saison en cours : en Europe, la saison n commence en août de l'année n."""
+    """Saison à interroger.
+
+    Utilise API_FOOTBALL_SEASON si elle est définie, sinon la saison courante
+    (en Europe, la saison n commence en août de l'année n).
+
+    Le plan gratuit d'API-Football étant limité aux saisons 2022-2024, la
+    configuration par défaut vise 2023 : cela permet de travailler sur des
+    données réelles sans abonnement payant.
+    """
+    if API_FOOTBALL_SEASON is not None:
+        return API_FOOTBALL_SEASON
     now = datetime.now(timezone.utc)
     return now.year if now.month >= 7 else now.year - 1
 

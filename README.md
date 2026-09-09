@@ -22,7 +22,7 @@ pronostics produits par des modèles statistiques — sans aucune saisie manuell
 | Tâche planifiée | ✅ APScheduler, toutes les 60 min |
 | Base de données | ✅ SQLite, 11 tables |
 | Backtest | ✅ sans fuite d'information |
-| Tests | ✅ 67 tests |
+| Tests | ✅ 73 tests |
 
 ---
 
@@ -86,6 +86,28 @@ curl http://localhost:8000/api/health
 Le champ `provider_message` indique votre compte et le quota consommé. Cet
 endpoint ne lève plus d'exception : si l'API renvoie une forme de réponse
 inattendue, il répond quand même avec un message explicatif.
+
+### ⚠️ Le plan gratuit ne couvre que les saisons 2022 à 2024
+
+Demander la saison en cours avec un plan gratuit renvoie :
+
+```
+{'plan': 'Free plans do not have access to this season, try from 2022 to 2024.'}
+```
+
+La configuration vise donc **la saison 2023** par défaut. Conséquence à
+comprendre : une saison passée est entièrement jouée, il n'y a **aucun match à
+venir** à afficher. Le site sert alors à autre chose, qui reste utile : vérifier
+ce que le modèle aurait annoncé sur des résultats connus.
+
+- `GET /api/results?league_id=39&last_n=25` rejoue le modèle sur les derniers
+  matchs joués et compare au score réel.
+- `GET /api/backtest?league_id=39&last_n=100` donne les métriques d'ensemble.
+- `GET /api/seasons/39` liste les saisons que votre plan autorise (1 requête).
+
+Pour afficher des matchs à venir, il faut un plan payant **et** laisser
+`API_FOOTBALL_SEASON` vide : la saison courante est alors calculée
+automatiquement.
 
 ### ⚠️ Le quota est la vraie contrainte
 
@@ -257,6 +279,8 @@ prono/
 | `GET /api/matches?sport=&league=&days=&min_confidence=` | matchs + pronostics |
 | `GET /api/match/{id}` | détail : stats, forces, forme, H2H, blessés, matrice |
 | `GET /api/standings/{league_id}` | classement et forces |
+| `GET /api/results?league_id=&last_n=` | modèle rejoué sur des résultats connus |
+| `GET /api/seasons/{league_id}` | saisons autorisées par votre plan |
 | `GET /api/backtest?league_id=&last_n=` | performance du modèle |
 | `GET /api/health` | état de la source et de la base |
 | `POST /api/sync?days=` | synchronisation immédiate |
@@ -270,6 +294,7 @@ Variables d'environnement (ou `app/.env`) :
 | Variable | Défaut | Rôle |
 |---|---|---|
 | `API_FOOTBALL_KEY` | — | clé API ; sa présence active le mode réel |
+| `API_FOOTBALL_SEASON` | `2023` | saison interrogée ; vide = saison courante (plan payant) |
 | `PRONOLAB_MODE` | auto | `demo` ou `apifootball` |
 | `PRONOLAB_SYNC_MINUTES` | 60 | intervalle de synchronisation |
 | `PRONOLAB_DAYS_AHEAD` | 7 | fenêtre de récupération |
@@ -284,6 +309,8 @@ Variables d'environnement (ou `app/.env`) :
 À lire avant de vous fier aux pronostics.
 
 1. **Les données affichées sont fictives** tant qu'aucune clé API n'est fournie.
+   Avec une clé mais un plan gratuit, les données sont réelles mais
+   **historiques** (saison 2023) : pas de matchs à venir.
 2. **Les blessés sont affichés mais pas intégrés au calcul.** L'absence d'un
    joueur majeur fausse pourtant nettement les forces d'une équipe.
 3. **Pas de cotes de bookmaker.** Impossible de détecter de la valeur sans

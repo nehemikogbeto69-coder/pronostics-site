@@ -16,11 +16,13 @@ from fastapi.staticfiles import StaticFiles
 
 from . import db, sync
 from .config import (
-    API_FOOTBALL_KEY, DATA_MODE, DISCLAIMER, FIXTURE_DAYS_AHEAD, LEAGUES,
+    API_FOOTBALL_FREE_SEASONS, API_FOOTBALL_KEY, API_FOOTBALL_SEASON,
+    DATA_MODE, DISCLAIMER, FIXTURE_DAYS_AHEAD, LEAGUES,
     SITE_NAME, SYNC_INTERVAL_MINUTES,
 )
 from .scheduler import next_run_iso, start_scheduler, stop_scheduler
 from .backtest import roi_simulation, run_backtest
+from .models import confidence
 
 logging.basicConfig(
     level=logging.INFO,
@@ -84,6 +86,9 @@ def meta() -> dict:
         "data_mode": DATA_MODE,
         "demo": DATA_MODE != "apifootball",
         "has_api_key": bool(API_FOOTBALL_KEY),
+        "season": API_FOOTBALL_SEASON,
+        "season_is_historical": API_FOOTBALL_SEASON is not None,
+        "free_seasons": list(API_FOOTBALL_FREE_SEASONS),
         "sync_interval_minutes": SYNC_INTERVAL_MINUTES,
         "days_ahead": FIXTURE_DAYS_AHEAD,
         "leagues": leagues,
@@ -91,6 +96,37 @@ def meta() -> dict:
         "last_sync": dict(last_sync) if last_sync else None,
         "next_sync": next_run_iso(),
         "disclaimer": DISCLAIMER,
+    }
+
+
+@app.get("/api/seasons/{league_id}")
+def seasons(league_id: int) -> dict:
+    """Saisons que votre plan autorise pour une ligue (1 requête API).
+
+    Utile avant de régler API_FOOTBALL_SEASON. Réservé au mode données réelles.
+    """
+    if DATA_MODE == "apifootball":
+        provider = _make_provider()
+        try:
+            rows = provider.list_seasons(league_id)
+        except Exception as exc:
+            raise HTTPException(502, f"API-Football : {exc}") from exc
+        finally:
+            close = getattr(provider, "close", None)
+            if callable(close):
+                close()
+    else:
+        rows = [
+            {"season": s, "start": None, "end": None, "current": False}
+            for s in (2022, 2023, 2024, 2025, 2026)
+        ]
+
+    league = db.query_one("SELECT * FROM leagues WHERE id = ?", (league_id,))
+    return {
+        "league": dict(league) if league else {"id": league_id},
+        "configured_season": API_FOOTBALL_SEASON,
+        "free_seasons": list(API_FOOTBALL_FREE_SEASONS),
+        "seasons": rows,
     }
 
 
@@ -271,12 +307,119 @@ def standings(league_id: int) -> dict:
 # ---------------------------------------------------------------------------
 # Backtest
 # ---------------------------------------------------------------------------
+@app.get("/api/results")
+def results(
+    league_id: int = 39,
+    last_n: int = Query(20, ge=1, le=100),
+) -> dict:
+    """Le modèle rejoué sur des matchs déjà joués.
+
+    C'est l'écran utile quand on travaille sur une saison passée : il n'y a
+    aucun match à venir, mais on peut vérifier ce que le modèle aurait annoncé
+    sur des résultats connus. Les forces sont recalculées sans le match testé.
+    """
+    if DATA_MODE != "apifootball":
+        provider = _make_provider()
+    else:
+        provider = _make_provider()
+
+    try:
+        finished = provider.fetch_finished([league_id], limit=400)
+    except Exception as exc:
+        raise HTTPException(502, f"source de données : {exc}") from exc
+    finally:
+        close = getattr(provider, "close", None)
+        if callable(close):
+            close()
+
+    rows = _replay(finished, league_id, last_n)
+    bt = run_backtest(finished, league_id, last_n=last_n)
+    league = db.query_one("SELECT * FROM leagues WHERE id = ?", (league_id,))
+
+    return {
+        "league": dict(league) if league else {"id": league_id},
+        "season": API_FOOTBALL_SEASON,
+        "data_mode": DATA_MODE,
+        "count": len(rows),
+        "accuracy": round(bt.accuracy, 4) if bt.n_matches else None,
+        "baseline_accuracy": round(bt.baseline_accuracy, 4) if bt.n_matches else None,
+        "matches": rows,
+    }
+
+
+def _replay(finished: list, league_id: int, last_n: int) -> list[dict]:
+    """Recalcule le pronostic de chaque match joué, puis le compare au résultat."""
+    from .models import football as fb
+    from .sync import baseline_for, compute_team_stats, league_averages
+
+    played = [
+        f for f in finished
+        if f.league_id == league_id
+        and f.home_goals is not None and f.away_goals is not None
+    ]
+    played.sort(key=lambda f: f.kickoff_utc)
+    if not played:
+        return []
+
+    # Noms d'équipes, si présents en base.
+    names = {r["id"]: r["name"] for r in db.query("SELECT id, name FROM teams")}
+
+    out = []
+    for target in played[-last_n:]:
+        history = [f for f in played if f.kickoff_utc < target.kickoff_utc]
+        if len(history) < 5:
+            continue
+        averages = league_averages(history)
+        baseline = baseline_for(league_id, averages)
+        stats = compute_team_stats(history, league_id)
+        sh, sa = stats.get(target.home_id), stats.get(target.away_id)
+        if not sh or not sa or sh["played"] < 2 or sa["played"] < 2:
+            continue
+
+        hs = fb.compute_strength(
+            sh["home_gf"], sh["home_ga"], sh["played_home"],
+            sh["away_gf"], sh["away_ga"], sh["played_away"], baseline,
+        )
+        as_ = fb.compute_strength(
+            sa["home_gf"], sa["home_ga"], sa["played_home"],
+            sa["away_gf"], sa["away_ga"], sa["played_away"], baseline,
+        )
+        pred = fb.predict_match(hs, as_, baseline)
+
+        hg, ag = int(target.home_goals), int(target.away_goals)
+        actual = "1" if hg > ag else ("2" if ag > hg else "X")
+        conf = confidence.confidence([pred.p_home, pred.p_draw, pred.p_away])
+
+        out.append({
+            "date": target.kickoff_utc[:10],
+            "home": names.get(target.home_id, f"Équipe {target.home_id}"),
+            "away": names.get(target.away_id, f"Équipe {target.away_id}"),
+            "score": f"{hg}-{ag}",
+            "actual": actual,
+            "lambda_home": pred.lam_home,
+            "lambda_away": pred.lam_away,
+            "p_home": pred.p_home,
+            "p_draw": pred.p_draw,
+            "p_away": pred.p_away,
+            "pick": pred.pick,
+            "confidence": conf,
+            "hit": pred.pick == actual,
+            "top_score": f"{pred.top_score[0]}-{pred.top_score[1]}",
+            "score_hit": f"{pred.top_score[0]}-{pred.top_score[1]}" == f"{hg}-{ag}",
+        })
+
+    out.reverse()  # plus récent en premier
+    return out
+
+
 @app.get("/api/backtest")
 def backtest(league_id: int = 39, last_n: int = Query(60, ge=10, le=300)) -> dict:
     """Performance du modèle sur les matchs déjà joués, sans fuite d'information."""
     provider = _make_provider()
     try:
         finished = provider.fetch_finished([league_id], limit=400)
+    except Exception as exc:
+        raise HTTPException(502, f"source de données : {exc}") from exc
     finally:
         close = getattr(provider, "close", None)
         if callable(close):
@@ -288,6 +431,7 @@ def backtest(league_id: int = 39, last_n: int = Query(60, ge=10, le=300)) -> dic
     return {
         "league": dict(league) if league else {"id": league_id},
         "evaluated_on": last_n,
+        "season": API_FOOTBALL_SEASON,
         "data_mode": DATA_MODE,
         **bt.summary(),
         "roi": roi,

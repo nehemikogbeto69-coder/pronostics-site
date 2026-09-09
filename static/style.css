@@ -83,6 +83,23 @@ body {
   font-family: var(--mono); font-size: 12px;
 }
 
+/* Bandeau saison historique : informatif, pas une alerte. */
+.banner-season {
+  background: #10243a;
+  border-bottom: 1px solid var(--blue);
+  color: #a9d3ff;
+  padding: 11px 20px;
+  font-size: 13px;
+}
+.banner-season code {
+  background: rgba(0,0,0,.35); padding: 1px 6px; border-radius: 4px;
+  font-family: var(--mono); font-size: 12px;
+}
+
+/* Résultat du pronostic face à un score connu. */
+table.data td.hit { color: var(--accent); font-weight: 700; }
+table.data td.miss { color: var(--red); }
+
 /* --------------------------------------------------------------- filtres */
 .filters {
   display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap;
