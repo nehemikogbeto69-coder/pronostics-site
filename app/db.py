@@ -177,6 +177,32 @@ CREATE TABLE IF NOT EXISTS standings (
     PRIMARY KEY (team_id, league_id, sport, season)
 );
 
+CREATE TABLE IF NOT EXISTS manual_matches (
+    fixture_id     INTEGER PRIMARY KEY,
+    sport          TEXT NOT NULL DEFAULT 'football',
+    league_id      INTEGER,
+    home_name      TEXT NOT NULL,
+    away_name      TEXT NOT NULL,
+    kickoff_utc    TEXT NOT NULL,
+    round          TEXT,
+    venue          TEXT,
+    -- Statistiques saisies, séparées domicile / extérieur.
+    home_gf_home   REAL NOT NULL,
+    home_ga_home   REAL NOT NULL,
+    home_gf_away   REAL NOT NULL,
+    home_ga_away   REAL NOT NULL,
+    home_n_home    INTEGER NOT NULL,
+    home_n_away    INTEGER NOT NULL,
+    away_gf_home   REAL NOT NULL,
+    away_ga_home   REAL NOT NULL,
+    away_gf_away   REAL NOT NULL,
+    away_ga_away   REAL NOT NULL,
+    away_n_home    INTEGER NOT NULL,
+    away_n_away    INTEGER NOT NULL,
+    created_at     TEXT,
+    updated_at     TEXT
+);
+
 CREATE TABLE IF NOT EXISTS sync_log (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     started_at  TEXT,
@@ -255,7 +281,8 @@ def reset_db() -> None:
     conn = get_conn()
     tables = [
         "leagues", "teams", "fixtures", "team_stats", "team_form",
-        "h2h", "injuries", "predictions", "prediction_log", "standings", "sync_log",
+        "h2h", "injuries", "predictions", "prediction_log", "standings",
+        "manual_matches", "sync_log",
     ]
     with tx():
         for t in tables:

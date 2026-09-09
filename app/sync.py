@@ -54,21 +54,44 @@ def league_averages(finished: list) -> dict[int, tuple[float, float, int]]:
 
 
 def baseline_for(league_id: int, averages: dict) -> football.LeagueBaseline:
-    """Moyennes observées si disponibles, sinon celles de la configuration."""
+    """Référence de buts de la ligue, par champ.
+
+    Priorité aux moyennes réellement observées sur les résultats, avec repli
+    champ par champ sur la configuration. Un sync partiel peut ne mesurer
+    qu'une des deux moyennes : il ne faut alors pas jeter l'autre.
+    """
     cfg = LEAGUES.get(league_id, {})
+    home_avg = cfg.get("home_avg_goals", 1.40)
+    away_avg = cfg.get("away_avg_goals", 1.15)
+
     if league_id in averages:
-        home_avg, away_avg, _ = averages[league_id]
-        if home_avg > 0 and away_avg > 0:
-            return football.LeagueBaseline(
-                home_avg_goals=round(home_avg, 3),
-                away_avg_goals=round(away_avg, 3),
-                home_advantage=cfg.get("home_advantage", 1.18),
-            )
+        obs_home, obs_away, _ = averages[league_id]
+        if obs_home > 0:
+            home_avg = round(obs_home, 3)
+        if obs_away > 0:
+            away_avg = round(obs_away, 3)
+
     return football.LeagueBaseline(
-        home_avg_goals=cfg.get("home_avg_goals", 1.40),
-        away_avg_goals=cfg.get("away_avg_goals", 1.15),
+        home_avg_goals=home_avg,
+        away_avg_goals=away_avg,
         home_advantage=cfg.get("home_advantage", 1.18),
     )
+
+
+def ensure_leagues() -> None:
+    """Garantit que les ligues configurées existent en base.
+
+    Sans ça, un sync lancé hors du démarrage FastAPI (tests, script) écrirait
+    les moyennes observées dans une table vide et les perdrait silencieusement.
+    """
+    for lid, cfg in LEAGUES.items():
+        db.upsert("leagues", {
+            "id": lid, "name": cfg["name"], "country": cfg["country"],
+            "sport": cfg["sport"],
+            "home_avg_goals": cfg["home_avg_goals"],
+            "away_avg_goals": cfg["away_avg_goals"],
+            "home_advantage": cfg["home_advantage"],
+        }, ["id"])
 
 
 # ---------------------------------------------------------------------------
@@ -138,6 +161,7 @@ def persist_team_stats(stats: dict[int, dict], league_id: int, season: int) -> N
 # Sync football
 # ---------------------------------------------------------------------------
 def sync_football(provider, league_ids: list[int], days_ahead: int = FIXTURE_DAYS_AHEAD) -> dict:
+    ensure_leagues()
     now_iso = db.utcnow()
     db.execute(
         "INSERT INTO sync_log (started_at, mode, ok, message) VALUES (?, ?, 0, 'en cours')",
@@ -155,7 +179,7 @@ def sync_football(provider, league_ids: list[int], days_ahead: int = FIXTURE_DAY
     # 2. Matchs joués -> stats -> forces
     finished = provider.fetch_finished(league_ids, limit=400)
     for f in finished:
-        db.upsert("fixtures", _fixture_row(f, now_iso), ["id", "sport"])
+        db.upsert("fixtures", _fixture_row(f, now_iso, provider.name), ["id", "sport"])
 
     averages = league_averages(finished)
     season = max((f.season for f in finished if f.season), default=2026)
@@ -189,7 +213,7 @@ def sync_football(provider, league_ids: list[int], days_ahead: int = FIXTURE_DAY
     # 3. Matchs à venir
     upcoming = provider.fetch_upcoming(league_ids, days_ahead)
     for f in upcoming:
-        db.upsert("fixtures", _fixture_row(f, now_iso), ["id", "sport"])
+        db.upsert("fixtures", _fixture_row(f, now_iso, provider.name), ["id", "sport"])
 
     # 4. Pronostics, forme, H2H, blessés
     predicted = 0
@@ -401,19 +425,37 @@ def sync_all(days_ahead: int = FIXTURE_DAYS_AHEAD) -> dict:
         result["basket"] = {"error": str(exc)}
 
     result["finished_at"] = db.utcnow()
+
+    # Les matchs saisis à la main sont recalculés avec les moyennes de ligue
+    # affinées par ce sync. Leurs statistiques restent celles de l'utilisateur :
+    # seule la référence de la ligue évolue.
+    try:
+        from .manual import recompute_all_manual
+        result["manual_recomputed"] = recompute_all_manual()
+    except Exception as exc:
+        log.exception("recalcul des matchs saisis en échec")
+        result["manual_recomputed"] = f"erreur : {exc}"
+
     return result
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-def _fixture_row(f, now_iso: str) -> dict:
+def _fixture_row(f, now_iso: str, source: str | None = None) -> dict:
+    """Ligne `fixtures` prête pour l'upsert.
+
+    `source` identifie l'origine du match pour l'affichage : "apifootball"
+    (données réelles), "demo" (championnat fictif) ou "manual" (saisie).
+    Sans argument, on se rabat sur le mode de données courant.
+    """
     return {
         "id": f.id, "league_id": f.league_id, "sport": f.sport,
         "home_id": f.home_id, "away_id": f.away_id,
         "kickoff_utc": f.kickoff_utc, "round": f.round, "venue": f.venue,
         "status": f.status, "home_goals": f.home_goals, "away_goals": f.away_goals,
-        "season": f.season, "source": getattr(f, "source", None),
+        "season": f.season,
+        "source": source or getattr(f, "source", None) or DATA_MODE,
         "updated_at": now_iso,
     }
 

@@ -8,6 +8,7 @@ const state = {
   league: "",
   days: 7,
   minConfidence: 0,
+  source: "",
   sort: "date",
   meta: null,
 };
@@ -55,6 +56,17 @@ function crest(team) {
   }
   const label = (team.short || team.name || "?").slice(0, 3).toUpperCase();
   return `<span class="crest">${label}</span>`;
+}
+
+function sourceBadge(src) {
+  if (!src) return "";
+  const kind = src.kind || "demo";
+  const title = {
+    manual: "Match saisi à la main. Statistiques fournies par vous.",
+    demo: "Données de démonstration, générées — pas réelles.",
+    api: "Match récupéré automatiquement depuis l'API.",
+  }[kind] || "";
+  return `<span class="src src-${kind}" title="${title}">${src.label || kind}</span>`;
 }
 
 /* ------------------------------------------------------------------ fetch */
@@ -123,6 +135,7 @@ async function loadMatches() {
   });
   if (state.league) params.set("league", state.league);
   if (state.minConfidence > 0) params.set("min_confidence", state.minConfidence);
+  if (state.source) params.set("source", state.source);
 
   try {
     const data = await api(`/api/matches?${params}`);
@@ -188,6 +201,7 @@ function matchCard(m) {
       <div class="match-center">
         <div class="match-time">${fmtDateTime(m.kickoff_utc)}</div>
         <div class="match-league">${m.league.name || m.round || ""}</div>
+        ${sourceBadge(m.source)}
       </div>
 
       <div class="team away">
@@ -571,6 +585,11 @@ function bind() {
     loadMatches();
   });
 
+  $("#source-select").addEventListener("change", (e) => {
+    state.source = e.target.value;
+    loadMatches();
+  });
+
   $("#sort-select").addEventListener("change", async (e) => {
     state.sort = e.target.value;
     await loadMatches();
@@ -594,9 +613,136 @@ function bind() {
   });
 }
 
+/* --------------------------------------------------- saisie manuelle */
+function openModal() {
+  const backdrop = $("#modal-backdrop");
+  const err = $("#form-error");
+  err.hidden = true;
+  err.textContent = "";
+
+  // Aligne le sélecteur de compétition sur le filtre courant.
+  const leagueSelect = $("#form-league");
+  if (state.league) leagueSelect.value = state.league;
+
+  // Date par défaut : samedi prochain à 15h, pour éviter une saisie dans le passé.
+  const kickoff = document.querySelector('#manual-form [name="kickoff_utc"]');
+  if (!kickoff.value) {
+    const d = new Date();
+    d.setDate(d.getDate() + ((6 - d.getDay() + 7) % 7 || 7));
+    d.setHours(15, 0, 0, 0);
+    const pad = (n) => String(n).padStart(2, "0");
+    kickoff.value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T15:00`;
+  }
+
+  backdrop.hidden = false;
+  document.body.style.overflow = "hidden";
+  document.querySelector('#manual-form [name="home_name"]').focus();
+}
+
+function closeModal() {
+  $("#modal-backdrop").hidden = true;
+  document.body.style.overflow = "";
+}
+
+function fillLeagueSelect() {
+  const select = $("#form-league");
+  if (!select || select.options.length) return;
+  for (const lg of state.meta?.leagues || []) {
+    const opt = document.createElement("option");
+    opt.value = lg.id;
+    opt.textContent = `${lg.name} (${lg.country})`;
+    select.appendChild(opt);
+  }
+}
+
+function bindManualForm() {
+  $("#btn-add-match").addEventListener("click", () => {
+    fillLeagueSelect();
+    openModal();
+  });
+  $("#modal-close").addEventListener("click", closeModal);
+  $("#modal-cancel").addEventListener("click", closeModal);
+  $("#modal-backdrop").addEventListener("click", (e) => {
+    if (e.target.id === "modal-backdrop") closeModal();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !$("#modal-backdrop").hidden) closeModal();
+  });
+
+  // Les légendes reprennent les noms saisis : on sait de quelle équipe on parle.
+  const form = $("#manual-form");
+  form.addEventListener("input", () => {
+    const home = form.home_name.value.trim();
+    const away = form.away_name.value.trim();
+    $("#stats-home-name").textContent = home || "équipe à domicile";
+    $("#stats-away-name").textContent = away || "équipe à l'extérieur";
+  });
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const err = $("#form-error");
+    const submit = $("#form-submit");
+    err.hidden = true;
+
+    const payload = {};
+    for (const el of form.elements) {
+      if (el.name) payload[el.name] = el.value;
+    }
+
+    submit.disabled = true;
+    submit.textContent = "Calcul…";
+    try {
+      const res = await fetch("/api/manual-matches", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        // Le serveur renvoie un message compréhensible : on l'affiche tel quel.
+        throw new Error(body.detail || `Erreur ${res.status}`);
+      }
+      closeModal();
+      form.reset();
+      // Le match saisi doit être visible : on retire tout filtre qui le masquerait.
+      state.source = "";
+      $("#source-select").value = "";
+
+      // On élargit la période si le match tombe au-delà de la fenêtre courante.
+      const kickoff = body.match?.kickoff_utc;
+      const daysUntil = kickoff
+        ? Math.ceil((new Date(kickoff).getTime() - Date.now()) / 86400000)
+        : 0;
+      if (daysUntil > state.days) {
+        state.days = Math.min(90, Math.max(14, daysUntil + 1));
+        $("#days-select").value = String(state.days);
+      }
+      await loadMatches();
+
+      // Un match saisi au-delà de 30 jours reste invisible : il faut le dire,
+      // sinon l'utilisateur croira que la saisie a échoué.
+      if (daysUntil > 90) {
+        alert(
+          "Match enregistré et pronostic calculé.\n\n" +
+          "Il tombe dans " + daysUntil + " jours, au-delà de la fenêtre " +
+          "d'affichage (90 jours maximum). Il apparaîtra dans la liste quand " +
+          "il s'en rapprochera."
+        );
+      }
+    } catch (exc) {
+      err.textContent = exc.message;
+      err.hidden = false;
+    } finally {
+      submit.disabled = false;
+      submit.textContent = "Calculer le pronostic";
+    }
+  });
+}
+
 /* ------------------------------------------------------------- démarrage */
 (async function init() {
   bind();
+  bindManualForm();
   try {
     await loadMeta();
     await Promise.all([loadMatches(), loadResults(), loadStandings(), loadBacktest(), loadHealth()]);

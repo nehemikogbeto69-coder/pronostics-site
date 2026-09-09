@@ -19,10 +19,11 @@ pronostics produits par des modèles statistiques — sans aucune saisie manuell
 | Récupération API-Football | ✅ connecteur écrit, **non testé faute de clé** |
 | Données réelles | ⛔ en attente de votre clé API |
 | Données de démonstration | ✅ championnat fictif complet |
+| Saisie manuelle de matchs | ✅ même moteur que l'API |
 | Tâche planifiée | ✅ APScheduler, toutes les 60 min |
 | Base de données | ✅ SQLite, 11 tables |
 | Backtest | ✅ sans fuite d'information |
-| Tests | ✅ 73 tests |
+| Tests | ✅ 111 tests |
 
 ---
 
@@ -48,6 +49,60 @@ python3 -m pytest -q
 ```
 
 ---
+
+## Saisie manuelle de matchs
+
+Complément au système API, pas un remplacement. Utile quand la source
+automatique ne couvre pas la compétition voulue — typiquement la saison en
+cours avec un plan gratuit limité à 2022-2024.
+
+Bouton **« Ajouter un match »** en haut de la liste. Champs demandés :
+
+| Champ | Détail |
+|---|---|
+| Équipe domicile / extérieur | noms libres |
+| Date et heure | interprétée en UTC |
+| Compétition | parmi les ligues de `app/config.py` |
+| Journée, stade | facultatifs |
+| Statistiques | buts marqués et encaissés, **séparés domicile / extérieur**, avec le nombre de matchs de référence |
+
+### Ce qui est garanti
+
+- **Même moteur.** Un match saisi passe par `models.football.predict_match`,
+  exactement comme un match issu de l'API. Un test vérifie que les deux chemins
+  produisent des résultats identiques au bit près.
+- **Même affichage.** Barre 1X2, matrice des scores, indice de confiance, détail
+  dépliable.
+- **Même liste.** Les matchs saisis apparaissent dans « Matchs à venir », avec un
+  badge de provenance (`Saisie manuelle`, `Démo`, `API`) et un filtre dédié.
+- **Aucune interférence.** Les identifiants saisis sont négatifs, ceux de
+  l'API positifs : le sync automatique ne peut pas écraser une saisie. Un test
+  le vérifie explicitement.
+
+### Les buts sont des totaux, pas des moyennes
+
+Saisissez par exemple `22` buts marqués à domicile sur `6` matchs. Le modèle
+divise lui-même. Si vous préférez raisonner en moyennes, saisissez la moyenne
+avec `1` match de référence — les deux fonctionnent.
+
+Une garde-fou rejette les totaux invraisemblables (plus de 9 buts par match),
+qui sont presque toujours une confusion entre total et moyenne.
+
+### Ce que la saisie ne fournit pas
+
+La forme récente, les confrontations directes et les blessés ne sont pas
+disponibles pour un match saisi, et l'interface le dit au lieu de laisser des
+cases vides ambiguës. Le pronostic repose donc uniquement sur les statistiques
+que vous fournissez et sur les moyennes de la ligue.
+
+### Endpoints
+
+| Endpoint | Rôle |
+|---|---|
+| `POST /api/manual-matches` | crée le match et calcule le pronostic |
+| `GET /api/manual-matches` | liste les saisies avec leurs statistiques |
+| `DELETE /api/manual-matches/{id}` | supprime une saisie |
+| `GET /api/matches?source=manual` | filtre la liste sur les saisies |
 
 ## Passer aux données réelles
 
@@ -253,6 +308,7 @@ prono/
 │   ├── db.py              schéma SQLite et helpers
 │   ├── main.py            API FastAPI
 │   ├── sync.py            pipeline : récupération → stats → pronostic
+│   ├── manual.py          saisie manuelle de matchs
 │   ├── scheduler.py       tâche planifiée (APScheduler)
 │   ├── backtest.py        évaluation du modèle
 │   ├── models/
@@ -281,6 +337,9 @@ prono/
 | `GET /api/standings/{league_id}` | classement et forces |
 | `GET /api/results?league_id=&last_n=` | modèle rejoué sur des résultats connus |
 | `GET /api/seasons/{league_id}` | saisons autorisées par votre plan |
+| `POST /api/manual-matches` | saisir un match et calculer son pronostic |
+| `GET /api/manual-matches` | liste des matchs saisis |
+| `DELETE /api/manual-matches/{id}` | supprimer une saisie |
 | `GET /api/backtest?league_id=&last_n=` | performance du modèle |
 | `GET /api/health` | état de la source et de la base |
 | `POST /api/sync?days=` | synchronisation immédiate |
@@ -310,7 +369,8 @@ Variables d'environnement (ou `app/.env`) :
 
 1. **Les données affichées sont fictives** tant qu'aucune clé API n'est fournie.
    Avec une clé mais un plan gratuit, les données sont réelles mais
-   **historiques** (saison 2023) : pas de matchs à venir.
+   **historiques** (saison 2023) : pas de matchs à venir. La saisie manuelle
+   contourne cette limite, au prix de statistiques à fournir soi-même.
 2. **Les blessés sont affichés mais pas intégrés au calcul.** L'absence d'un
    joueur majeur fausse pourtant nettement les forces d'une équipe.
 3. **Pas de cotes de bookmaker.** Impossible de détecter de la valeur sans

@@ -21,6 +21,7 @@ from .config import (
     SITE_NAME, SYNC_INTERVAL_MINUTES,
 )
 from .scheduler import next_run_iso, start_scheduler, stop_scheduler
+from . import manual
 from .backtest import roi_simulation, run_backtest
 from .models import confidence
 
@@ -137,14 +138,23 @@ def seasons(league_id: int) -> dict:
 def matches(
     sport: str = Query("football", description="football | tennis | basket"),
     league: int | None = Query(None, description="Identifiant de ligue"),
-    days: int = Query(FIXTURE_DAYS_AHEAD, ge=1, le=30),
+    days: int = Query(
+        FIXTURE_DAYS_AHEAD, ge=1, le=90,
+        description="Fenêtre en jours. Au-delà de 30, seuls les matchs saisis "
+                    "manuellement ou issus d'un sync long apparaissent.",
+    ),
     min_confidence: float = Query(0.0, ge=0.0, le=100.0),
+    source: str | None = Query(
+        None,
+        description="Filtrer par provenance : manual, demo, apifootball, ou 'api' "
+                    "pour tout ce qui n'est pas une saisie manuelle.",
+    ),
     limit: int = Query(100, ge=1, le=300),
 ) -> dict:
     """Matchs à venir avec leur pronostic, du plus proche au plus lointain."""
     sql = """
         SELECT f.id, f.league_id, f.sport, f.home_id, f.away_id, f.kickoff_utc,
-               f.round, f.venue, f.status,
+               f.round, f.venue, f.status, f.source,
                th.name AS home_name, th.short AS home_short, th.logo AS home_logo,
                ta.name AS away_name, ta.short AS away_short, ta.logo AS away_logo,
                l.name  AS league_name, l.country AS league_country,
@@ -168,6 +178,14 @@ def matches(
     if min_confidence > 0:
         sql += " AND p.confidence >= ?"
         params.append(min_confidence)
+    if source:
+        # "api" regroupe tout ce qui vient d'une source automatique, pour
+        # séparer d'un coup les données réelles/démo des saisies manuelles.
+        if source == "api":
+            sql += " AND COALESCE(f.source, '') != 'manual'"
+        else:
+            sql += " AND f.source = ?"
+            params.append(source)
     sql += " ORDER BY f.kickoff_utc ASC LIMIT ?"
     params.append(limit)
 
@@ -180,6 +198,25 @@ def matches(
         "data_mode": DATA_MODE,
         "matches": items,
     }
+
+
+SOURCE_LABELS = {
+    "manual": ("Saisie manuelle", "manual"),
+    "demo": ("Démo", "demo"),
+    "demo-tennis": ("Démo", "demo"),
+    "demo-basket": ("Démo", "demo"),
+    "apifootball": ("API", "api"),
+}
+
+
+def _source_info(raw) -> dict:
+    """Provenance d'un match, prête à afficher.
+
+    Trois catégories seulement côté interface : api, demo, manual. Le détail
+    technique reste disponible dans `raw`.
+    """
+    label, kind = SOURCE_LABELS.get(raw or "", (raw or "inconnue", "demo"))
+    return {"raw": raw, "label": label, "kind": kind}
 
 
 def _row_to_match(r) -> dict:
@@ -197,6 +234,7 @@ def _row_to_match(r) -> dict:
             matrix = None
     return {
         "id": r["id"],
+        "source": _source_info(r["source"]),
         "league": {"id": r["league_id"], "name": r["league_name"] or "",
                    "country": r["league_country"] or ""},
         "kickoff_utc": r["kickoff_utc"],
@@ -228,7 +266,7 @@ def match_detail(fixture_id: int) -> dict:
     r = db.query_one(
         """
         SELECT f.id, f.league_id, f.sport, f.home_id, f.away_id, f.kickoff_utc,
-               f.round, f.venue, f.status,
+               f.round, f.venue, f.status, f.source,
                th.name AS home_name, th.short AS home_short, th.logo AS home_logo,
                ta.name AS away_name, ta.short AS away_short, ta.logo AS away_logo,
                l.name  AS league_name, l.country AS league_country,
@@ -302,6 +340,84 @@ def standings(league_id: int) -> dict:
         "league": dict(league) if league else {"id": league_id},
         "teams": out,
     }
+
+
+# ---------------------------------------------------------------------------
+# Saisie manuelle
+# ---------------------------------------------------------------------------
+@app.post("/api/manual-matches", status_code=201)
+def create_manual_match(payload: dict) -> dict:
+    """Ajoute un match saisi à la main et calcule son pronostic.
+
+    Le match passe par le même moteur de Poisson que les matchs issus de l'API :
+    seules les statistiques d'entrée diffèrent, puisqu'elles sont fournies ici
+    au lieu d'être téléchargées.
+
+    Champs attendus :
+      home_name, away_name      noms des deux équipes
+      kickoff_utc               date et heure, ex. "2026-09-20T15:00"
+      league_id                 identifiant de ligue (voir /api/meta)
+      round, venue              facultatifs
+      home_gf_home, home_ga_home, home_n_home
+      home_gf_away, home_ga_away, home_n_away
+      away_gf_home, away_ga_home, away_n_home
+      away_gf_away, away_ga_away, away_n_away
+
+    Les buts sont des TOTAUX sur `n` matchs, pas des moyennes.
+    """
+    try:
+        created = manual.create_manual_match(payload)
+    except manual.ManualMatchError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+    detail = match_detail(created["fixture_id"])
+    return {"created": True, "fixture_id": created["fixture_id"], "match": detail}
+
+
+@app.get("/api/manual-matches")
+def list_manual_matches(include_past: bool = Query(False)) -> dict:
+    """Liste les matchs saisis à la main, avec leurs statistiques d'entrée."""
+    sql = """
+        SELECT m.*, p.pick, p.pick_label, p.confidence,
+               p.lambda_home, p.lambda_away, p.created_at AS predicted_at
+        FROM manual_matches m
+        LEFT JOIN predictions p ON p.fixture_id = m.fixture_id
+    """
+    if not include_past:
+        sql += " WHERE m.kickoff_utc >= datetime('now')"
+    sql += " ORDER BY m.kickoff_utc ASC"
+
+    rows = db.query(sql)
+    items = []
+    for r in rows:
+        d = dict(r)
+        d["stats"] = {
+            "home": {
+                "gf_home": r["home_gf_home"], "ga_home": r["home_ga_home"],
+                "n_home": r["home_n_home"],
+                "gf_away": r["home_gf_away"], "ga_away": r["home_ga_away"],
+                "n_away": r["home_n_away"],
+            },
+            "away": {
+                "gf_home": r["away_gf_home"], "ga_home": r["away_ga_home"],
+                "n_home": r["away_n_home"],
+                "gf_away": r["away_gf_away"], "ga_away": r["away_ga_away"],
+                "n_away": r["away_n_away"],
+            },
+        }
+        for k in list(d.keys()):
+            if k.startswith(("home_", "away_")) and k not in ("home_name", "away_name"):
+                d.pop(k, None)
+        items.append(d)
+    return {"count": len(items), "matches": items}
+
+
+@app.delete("/api/manual-matches/{fixture_id}")
+def delete_manual_match(fixture_id: int) -> dict:
+    """Supprime un match saisi à la main."""
+    if not manual.delete_manual_match(fixture_id):
+        raise HTTPException(404, "Ce match n'existe pas ou n'est pas une saisie manuelle.")
+    return {"deleted": True, "fixture_id": fixture_id}
 
 
 # ---------------------------------------------------------------------------

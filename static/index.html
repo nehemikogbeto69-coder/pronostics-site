@@ -71,6 +71,8 @@
       <option value="3">3 jours</option>
       <option value="7" selected>7 jours</option>
       <option value="14">14 jours</option>
+      <option value="30">30 jours</option>
+      <option value="90">3 mois</option>
     </select>
   </div>
 
@@ -79,6 +81,17 @@
       Confiance min. <span id="confidence-value">0 %</span>
     </label>
     <input type="range" id="confidence-range" min="0" max="60" step="5" value="0">
+  </div>
+
+  <div class="filter-group">
+    <label for="source-select">Provenance</label>
+    <select id="source-select">
+      <option value="">Toutes</option>
+      <option value="manual">Saisie manuelle</option>
+      <option value="api">Automatique (API ou démo)</option>
+      <option value="demo">Démo</option>
+      <option value="apifootball">API-Football</option>
+    </select>
   </div>
 
   <div class="filter-group grow">
@@ -95,7 +108,16 @@
   <section id="matches-section">
     <div class="section-head">
       <h2>Matchs à venir</h2>
-      <span class="muted" id="match-count"></span>
+      <div class="section-head-right">
+        <span class="muted" id="match-count"></span>
+        <button class="btn" id="btn-add-match">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+          Ajouter un match
+        </button>
+      </div>
     </div>
     <div id="matches" class="matches" aria-live="polite">
       <p class="empty">Chargement…</p>
@@ -144,6 +166,110 @@
   <p id="disclaimer"></p>
   <p class="small muted" id="meta-line"></p>
 </footer>
+
+<!-- ---------------------------------------------------------- formulaire -->
+<div class="modal-backdrop" id="modal-backdrop" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-head">
+      <h2 id="modal-title">Ajouter un match</h2>
+      <button class="modal-close" id="modal-close" aria-label="Fermer">&times;</button>
+    </div>
+
+    <p class="small muted">
+      Le pronostic est calculé par <strong>le même moteur de Poisson</strong> que
+      pour les matchs issus de l'API. Seule la provenance des statistiques
+      change&nbsp;: vous les fournissez au lieu qu'elles soient téléchargées.
+    </p>
+
+    <form id="manual-form" novalidate>
+      <fieldset>
+        <legend>Match</legend>
+        <div class="form-grid">
+          <label>Équipe à domicile
+            <input name="home_name" required placeholder="Real Madrid" autocomplete="off">
+          </label>
+          <label>Équipe à l'extérieur
+            <input name="away_name" required placeholder="FC Barcelone" autocomplete="off">
+          </label>
+          <label>Date et heure (UTC)
+            <input name="kickoff_utc" type="datetime-local" required>
+          </label>
+          <label>Compétition
+            <select name="league_id" id="form-league"></select>
+          </label>
+          <label>Journée <span class="opt">(facultatif)</span>
+            <input name="round" placeholder="Journée 10" autocomplete="off">
+          </label>
+          <label>Stade <span class="opt">(facultatif)</span>
+            <input name="venue" placeholder="Santiago Bernabéu" autocomplete="off">
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>
+          Statistiques — <span id="stats-home-name">équipe à domicile</span>
+        </legend>
+        <p class="small muted">
+          Saisissez des <strong>totaux de buts</strong> sur un nombre de matchs,
+          pas des moyennes. Séparez domicile et extérieur&nbsp;: l'effet terrain
+          est réel et le modèle en tient compte.
+        </p>
+        <table class="stats-input">
+          <thead>
+            <tr><th></th><th>Buts marqués</th><th>Buts encaissés</th><th>Matchs</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th>À domicile</th>
+              <td><input name="home_gf_home" type="number" min="0" step="0.5" value="10" required></td>
+              <td><input name="home_ga_home" type="number" min="0" step="0.5" value="6" required></td>
+              <td><input name="home_n_home" type="number" min="1" step="1" value="5" required></td>
+            </tr>
+            <tr>
+              <th>À l'extérieur</th>
+              <td><input name="home_gf_away" type="number" min="0" step="0.5" value="7" required></td>
+              <td><input name="home_ga_away" type="number" min="0" step="0.5" value="8" required></td>
+              <td><input name="home_n_away" type="number" min="1" step="1" value="5" required></td>
+            </tr>
+          </tbody>
+        </table>
+      </fieldset>
+
+      <fieldset>
+        <legend>
+          Statistiques — <span id="stats-away-name">équipe à l'extérieur</span>
+        </legend>
+        <table class="stats-input">
+          <thead>
+            <tr><th></th><th>Buts marqués</th><th>Buts encaissés</th><th>Matchs</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th>À domicile</th>
+              <td><input name="away_gf_home" type="number" min="0" step="0.5" value="9" required></td>
+              <td><input name="away_ga_home" type="number" min="0" step="0.5" value="7" required></td>
+              <td><input name="away_n_home" type="number" min="1" step="1" value="5" required></td>
+            </tr>
+            <tr>
+              <th>À l'extérieur</th>
+              <td><input name="away_gf_away" type="number" min="0" step="0.5" value="6" required></td>
+              <td><input name="away_ga_away" type="number" min="0" step="0.5" value="10" required></td>
+              <td><input name="away_n_away" type="number" min="1" step="1" value="5" required></td>
+            </tr>
+          </tbody>
+        </table>
+      </fieldset>
+
+      <div class="form-error" id="form-error" hidden></div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" id="modal-cancel">Annuler</button>
+        <button type="submit" class="btn" id="form-submit">Calculer le pronostic</button>
+      </div>
+    </form>
+  </div>
+</div>
 
 <script src="/static/app.js"></script>
 </body>
