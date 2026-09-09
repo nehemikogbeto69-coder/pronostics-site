@@ -22,7 +22,7 @@ pronostics produits par des modèles statistiques — sans aucune saisie manuell
 | Tâche planifiée | ✅ APScheduler, toutes les 60 min |
 | Base de données | ✅ SQLite, 11 tables |
 | Backtest | ✅ sans fuite d'information |
-| Tests | ✅ 47 tests |
+| Tests | ✅ 67 tests |
 
 ---
 
@@ -70,10 +70,22 @@ Pour basculer sur les vraies données :
 Vérifiez la connexion :
 
 ```bash
+python3 verifier-cle-api.py
+```
+
+Le script interroge l'API (`/ping`, une seule requête) et vous dit précisément
+ce qui ne va pas : clé absente, invalide, expirée, quota épuisé, ou tout est en
+ordre. Il masque la clé et ne l'écrit nulle part.
+
+Vous pouvez aussi interroger le site directement :
+
+```bash
 curl http://localhost:8000/api/health
 ```
 
-Le champ `provider_message` indique votre compte et le quota consommé.
+Le champ `provider_message` indique votre compte et le quota consommé. Cet
+endpoint ne lève plus d'exception : si l'API renvoie une forme de réponse
+inattendue, il répond quand même avec un message explicatif.
 
 ### ⚠️ Le quota est la vraie contrainte
 

@@ -94,6 +94,14 @@ class APIFootballProvider(BaseProvider):
                 f"Quota API dépassé (HTTP {r.status_code}). Espacez les syncs ou "
                 f"augmentez SYNC_INTERVAL_MINUTES."
             )
+        if r.status_code == 403:
+            # 403 = clé absente, invalide, expirée, ou envoyée dans le mauvais
+            # en-tête. C'est de loin l'erreur la plus fréquente au démarrage.
+            raise APIFootballError(
+                "HTTP 403 — clé refusée. Vérifiez que API_FOOTBALL_KEY est bien "
+                "définie sur Render, qu'elle ne contient pas d'espace ni de "
+                "guillemet, et qu'elle est active sur dashboard.api-football.io."
+            )
         if r.status_code >= 400:
             raise APIFootballError(f"HTTP {r.status_code} sur {path} : {r.text[:200]}")
 
@@ -110,18 +118,58 @@ class APIFootballProvider(BaseProvider):
         return data
 
     def health_check(self) -> tuple[bool, str]:
+        """Vérifie la clé et l'état du compte.
+
+        Ne lève jamais d'exception : `/api/health` doit répondre même quand
+        l'API est injoignable ou quand la clé est refusée. Le message retourné
+        est destiné à être lu dans les logs de déploiement.
+
+        ⚠️ `response` n'est pas toujours une liste. Selon l'état du compte,
+        API-Football peut renvoyer un objet, une chaîne, voire une liste de
+        chaînes. Un `data[0]` aveugle sur un dict lève `KeyError: 0` — c'est
+        exactement le plantage observé sur Render.
+        """
         try:
             data = self.get("/status")
-            if data and data[0].get("account"):
-                acc = data[0]["account"]
-                req = data[0].get("requests", {})
-                return True, (
-                    f"compte {acc.get('firstname', '')} {acc.get('lastname', '')} — "
-                    f"requêtes aujourd'hui : {req.get('current')}/{req.get('limit_day')}"
-                )
-            return True, "API-Football répond"
         except APIFootballError as exc:
-            return False, str(exc)
+            return False, f"API-Football : {exc}"
+        except Exception as exc:  # réseau, DNS, timeout, JSON inattendu
+            return False, f"source injoignable : {type(exc).__name__}: {exc}"
+
+        try:
+            info = _first_dict(data)
+        except Exception as exc:
+            return False, f"réponse /status illisible : {type(exc).__name__}"
+
+        if info is None:
+            return True, (
+                "API-Football répond, mais /status ne renvoie pas les infos de "
+                f"compte attendues (type reçu : {type(data).__name__})"
+            )
+
+        acc = info.get("account")
+        if not isinstance(acc, dict):
+            return True, "API-Football répond, mais aucune info de compte dans /status"
+
+        subscription = acc.get("subscription") or "inconnue"
+        req = info.get("requests") if isinstance(info.get("requests"), dict) else {}
+        current, limit_day = req.get("current"), req.get("limit_day")
+
+        nom = " ".join(
+            part for part in (acc.get("firstname"), acc.get("lastname")) if part
+        ).strip() or acc.get("email", "compte")
+
+        if current is not None and limit_day:
+            quota = f" — requêtes aujourd'hui : {current}/{limit_day}"
+            if current >= limit_day:
+                return False, (
+                    f"quota journalier épuisé ({current}/{limit_day}). "
+                    "Attendez la réinitialisation ou augmentez PRONOLAB_SYNC_MINUTES."
+                )
+        else:
+            quota = ""
+
+        return True, f"clé valide — compte {nom}, offre {subscription}{quota}"
 
     # ------------------------------------------------------------------
     # Matchs
@@ -322,6 +370,24 @@ class APIFootballProvider(BaseProvider):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+def _first_dict(data: object) -> dict | None:
+    """Extrait le premier dictionnaire d'une réponse API, quelle que soit sa forme.
+
+    API-Football renvoie `response` sous forme de liste dans le cas nominal,
+    mais un objet seul, une chaîne ou une liste de chaînes sont possibles selon
+    l'état du compte. Cette fonction normalise sans jamais lever d'exception de
+    type : elle retourne None quand rien d'exploitable n'est trouvé.
+    """
+    if isinstance(data, dict):
+        return data or None
+    if isinstance(data, list):
+        for item in data:
+            if isinstance(item, dict):
+                return item
+        return None
+    return None
+
+
 def _season() -> int:
     """Saison en cours : en Europe, la saison n commence en août de l'année n."""
     now = datetime.now(timezone.utc)
