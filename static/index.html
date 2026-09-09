@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PronoLab — pronostics sportifs algorithmiques</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M3 3v18h18"/><path d="M7 15l4-6 3 4 5-8"/>
+    </svg>
+    <div>
+      <h1 id="site-name">PronoLab</h1>
+      <p class="tagline">Pronostics calculés — Poisson, Elo, points attendus</p>
+    </div>
+  </div>
+
+  <div class="topbar-right">
+    <div class="status" id="status" title="État de la source de données">
+      <span class="dot" id="status-dot"></span>
+      <span id="status-text">vérification…</span>
+    </div>
+    <button class="btn" id="btn-sync" title="Relancer une synchronisation maintenant">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>
+      </svg>
+      Synchroniser
+    </button>
+  </div>
+</header>
+
+<div class="banner-demo" id="banner-demo" hidden>
+  <strong>Mode démonstration.</strong>
+  Les matchs et statistiques affichés sont <u>générés</u>, pas réels.
+  Le moteur de calcul, lui, fonctionne pour de vrai. Pour basculer sur les
+  données réelles, ajoutez votre clé dans <code>app/.env</code> :
+  <code>API_FOOTBALL_KEY=votre_cle</code>
+</div>
+
+<nav class="filters">
+  <div class="tabs" id="sport-tabs" role="tablist">
+    <button class="tab active" data-sport="football" role="tab">Football</button>
+    <button class="tab" data-sport="tennis" role="tab">Tennis</button>
+    <button class="tab" data-sport="basket" role="tab">Basket</button>
+  </div>
+
+  <div class="filter-group">
+    <label for="league-select">Ligue</label>
+    <select id="league-select"><option value="">Toutes</option></select>
+  </div>
+
+  <div class="filter-group">
+    <label for="days-select">Période</label>
+    <select id="days-select">
+      <option value="1">Aujourd'hui et demain</option>
+      <option value="3">3 jours</option>
+      <option value="7" selected>7 jours</option>
+      <option value="14">14 jours</option>
+    </select>
+  </div>
+
+  <div class="filter-group">
+    <label for="confidence-range">
+      Confiance min. <span id="confidence-value">0 %</span>
+    </label>
+    <input type="range" id="confidence-range" min="0" max="60" step="5" value="0">
+  </div>
+
+  <div class="filter-group grow">
+    <label for="sort-select">Trier par</label>
+    <select id="sort-select">
+      <option value="date">Date du match</option>
+      <option value="confidence">Confiance décroissante</option>
+      <option value="league">Ligue</option>
+    </select>
+  </div>
+</nav>
+
+<main>
+  <section id="matches-section">
+    <div class="section-head">
+      <h2>Matchs à venir</h2>
+      <span class="muted" id="match-count"></span>
+    </div>
+    <div id="matches" class="matches" aria-live="polite">
+      <p class="empty">Chargement…</p>
+    </div>
+  </section>
+
+  <section id="tools-section">
+    <div class="section-head">
+      <h2>Analyse du modèle</h2>
+    </div>
+    <div class="tools-grid">
+      <div class="card">
+        <h3>Classement et forces</h3>
+        <p class="muted small">
+          Force d'attaque et de défense normalisées par la moyenne de la ligue.
+          1.00 = niveau moyen. Ce sont ces nombres qui alimentent le calcul de Poisson.
+        </p>
+        <div id="standings" class="standings"></div>
+      </div>
+
+      <div class="card">
+        <h3>Backtest — le modèle est-il bon ?</h3>
+        <p class="muted small">
+          Pronostics recalculés sur des matchs déjà joués, en excluant à chaque fois
+          le match testé. Aucune fuite d'information.
+        </p>
+        <div id="backtest"></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <p id="disclaimer"></p>
+  <p class="small muted" id="meta-line"></p>
+</footer>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

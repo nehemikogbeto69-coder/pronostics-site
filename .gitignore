@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Base de données locale
+*.db
+*.db-shm
+*.db-wal
+
+# Secrets
+.env
+
+# Environnements virtuels
+.venv/
+venv/
