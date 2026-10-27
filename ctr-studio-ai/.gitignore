@@ -1,0 +1,17 @@
+# Dépendances et artefacts — jamais commités
+node_modules/
+package-lock.json
+npm-debug.log*
+yarn-error.log*
+
+# Éditeurs / systèmes
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Sorties de test et de build
+coverage/
+.nyc_output/
+*.tsbuildinfo
