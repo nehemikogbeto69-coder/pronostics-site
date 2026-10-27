@@ -89,6 +89,14 @@ pour le HTML/CSS/JS, protection contre la traversée de chemin).
 > `npm install` n'est **pas** nécessaire pour utiliser l'application : il ne sert qu'aux tests.
 > L'application elle-même n'a aucune dépendance.
 
+### Voir des exemples de rendu
+```bash
+node tools/make-samples.mjs    # produit 4 PNG 1280×720 vérifiés dans docs/apercus/
+```
+Le script utilise le **vrai pipeline d'export** (`src/io/exporter.js`) : ce sont exactement les octets
+qu'un utilisateur télécharge, avec la vérification IHDR + décodage affichée à la fin. Les fichiers
+générés ne sont pas commités (voir `.gitignore`).
+
 ### Option B — n'importe quel serveur statique
 ```bash
 cd ctr-studio-ai

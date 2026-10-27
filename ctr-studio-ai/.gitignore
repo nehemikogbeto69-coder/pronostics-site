@@ -15,3 +15,7 @@ Thumbs.db
 coverage/
 .nyc_output/
 *.tsbuildinfo
+
+# Exemples de miniatures générés localement :
+#   node tools/make-samples.mjs
+docs/apercus/
