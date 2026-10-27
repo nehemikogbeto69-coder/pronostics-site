@@ -110,7 +110,6 @@ const server = createServer(async (req, res) => {
       "Last-Modified": stats.mtime.toUTCString(),
       "Cache-Control": isDev ? "no-cache, must-revalidate" : "public, max-age=3600",
       "X-Content-Type-Options": "nosniff",
-      "Cross-Origin-Opener-Policy": "same-origin",
     });
 
     if (req.method === "HEAD") {
