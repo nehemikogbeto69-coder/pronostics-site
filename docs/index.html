@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#07040d">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="CTR Studio AI — éditeur de miniatures YouTube 1280×720, analyse heuristique locale et générateur d'idées. Tout se passe dans votre navigateur.">
+<title>CTR Studio AI — miniatures YouTube, analyse et idées</title>
+<link rel="stylesheet" href="./styles/tokens.css">
+<link rel="stylesheet" href="./styles/base.css">
+<link rel="stylesheet" href="./styles/layout.css">
+<link rel="stylesheet" href="./styles/components.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%237c3aed'/%3E%3Cpath d='M12 9.5 23 16 12 22.5z' fill='%23fff'/%3E%3C/svg%3E">
+</head>
+<body data-view="editor">
+
+<a class="skip-link" href="#main">Aller au contenu</a>
+
+<header class="app-header">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+           stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2.5" y="4.5" width="19" height="15" rx="3"/>
+        <path d="M10 9.2 15 12l-5 2.8z" fill="currentColor" stroke="none"/>
+        <path d="M5 19.5h14"/>
+      </svg>
+    </span>
+    <span class="brand-text">
+      <strong>CTR Studio <em>AI</em></strong>
+      <small>Miniatures YouTube · tout reste sur votre appareil</small>
+    </span>
+  </div>
+
+  <nav class="tabs" id="tabs" role="tablist" aria-label="Sections de l'application">
+    <button class="tab is-active" role="tab" data-view="editor" aria-selected="true" aria-controls="view-editor">
+      <span class="tab-ico" aria-hidden="true"></span>Éditeur
+    </button>
+    <button class="tab" role="tab" data-view="analysis" aria-selected="false" aria-controls="view-analysis">
+      <span class="tab-ico" aria-hidden="true"></span>Analyse
+    </button>
+    <button class="tab" role="tab" data-view="ideas" aria-selected="false" aria-controls="view-ideas">
+      <span class="tab-ico" aria-hidden="true"></span>Idées
+    </button>
+  </nav>
+
+  <div class="header-right">
+    <span class="pill" title="Aucune requête réseau : calculs et rendu dans le navigateur">
+      <span class="pill-dot" aria-hidden="true"></span>100&nbsp;% local
+    </span>
+    <button type="button" class="icon-btn" id="btn-about" aria-label="À propos, aide et raccourcis">?</button>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- ============================================================ ÉDITEUR -->
+  <section class="view" id="view-editor" role="tabpanel" aria-labelledby="tab-editor">
+
+    <div class="editor">
+      <div class="editor-main">
+
+        <div class="toolbar" role="toolbar" aria-label="Outils de la miniature">
+          <button type="button" class="btn btn-primary btn-sm" id="btn-photo">
+            <span class="btn-ico" data-icon="image"></span>Importer une photo
+          </button>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-undo" title="Annuler (Ctrl+Z)">
+            <span class="btn-ico" data-icon="undo"></span>Annuler
+          </button>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-redo" title="Rétablir (Ctrl+Maj+Z)">
+            <span class="btn-ico" data-icon="redo"></span>Rétablir
+          </button>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-guides" aria-pressed="false"
+                  title="Règle des tiers et zones à éviter">
+            <span class="btn-ico" data-icon="grid"></span>Guides
+          </button>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-analyze-current"
+                  title="Exporter puis analyser la miniature en cours">
+            <span class="btn-ico" data-icon="chart"></span>Analyser
+          </button>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-font"
+                  title="Importer un fichier de police (.ttf, .otf, .woff2)">
+            <span class="btn-ico" data-icon="text"></span>Police…
+          </button>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-reset" title="Repartir d'une composition vierge">
+            <span class="btn-ico" data-icon="refresh"></span>Réinitialiser
+          </button>
+          <button type="button" class="btn btn-primary btn-sm" id="btn-export-quick">
+            <span class="btn-ico" data-icon="download"></span>Exporter le PNG
+          </button>
+        </div>
+
+        <div class="stage">
+          <div class="canvas-frame" id="canvas-frame">
+            <canvas id="thumb-canvas" width="1280" height="720"
+                    aria-label="Aperçu de la miniature 1280 par 720"></canvas>
+            <span class="frame-badge">1280 × 720</span>
+          </div>
+          <p class="stage-hint">
+            Glissez un calque pour le déplacer · poignées pour redimensionner · poignée ronde pour pivoter ·
+            double-tap (ou double-clic) pour éditer le texte · glissez le fond pour recadrer la photo.
+          </p>
+          <p class="stage-status" id="stage-status" role="status"></p>
+        </div>
+
+        <section class="templates" aria-labelledby="templates-title">
+          <h2 id="templates-title">Modèles de départ</h2>
+          <p class="section-note">
+            Trois bases prêtes à l'emploi. La photo déjà importée est conservée : seuls le fond, le traitement
+            et les calques de texte changent.
+          </p>
+          <div class="template-list" id="template-list"></div>
+        </section>
+      </div>
+
+      <aside class="inspector" id="inspector" data-active="calques" aria-label="Réglages">
+        <nav class="panel-nav" id="panel-nav" role="tablist" aria-label="Panneaux de réglages"></nav>
+
+        <section class="panel" data-panel="calques">
+          <header class="panel-head">
+            <h2>Calques</h2>
+            <span class="panel-hint">Le haut de la liste est au premier plan</span>
+          </header>
+          <div class="panel-body">
+            <div class="button-row" id="layers-actions"></div>
+            <div id="panel-layers"></div>
+          </div>
+        </section>
+
+        <section class="panel" data-panel="texte" hidden>
+          <header class="panel-head"><h2>Texte</h2></header>
+          <div class="panel-body" id="panel-text"></div>
+        </section>
+
+        <section class="panel" data-panel="style" hidden>
+          <header class="panel-head"><h2>Style du calque</h2></header>
+          <div class="panel-body" id="panel-style"></div>
+        </section>
+
+        <section class="panel" data-panel="photo" hidden>
+          <header class="panel-head"><h2>Photo</h2></header>
+          <div class="panel-body">
+            <p class="photo-meta" id="photo-meta"></p>
+            <div class="button-row is-wrap" id="photo-actions"></div>
+            <div id="panel-photo"></div>
+          </div>
+        </section>
+
+        <section class="panel" data-panel="fond" hidden>
+          <header class="panel-head"><h2>Fond</h2></header>
+          <div class="panel-body" id="panel-bg"></div>
+        </section>
+
+        <section class="panel" data-panel="export" hidden>
+          <header class="panel-head">
+            <h2>Export PNG</h2>
+            <span class="panel-hint">1280 × 720 · vérifié octet par octet</span>
+          </header>
+          <div class="panel-body">
+            <div id="export-fields"></div>
+            <button type="button" class="btn btn-primary btn-block" id="btn-export"></button>
+            <div id="export-result" hidden></div>
+            <details class="fallback" id="export-fallback" hidden></details>
+
+            <h3 class="sub-title">Projet</h3>
+            <div class="button-row is-wrap" id="project-actions"></div>
+            <p class="hint" id="autosave-status"></p>
+          </div>
+        </section>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ============================================================ ANALYSE -->
+  <section class="view" id="view-analysis" role="tabpanel" aria-labelledby="tab-analysis" hidden>
+    <div class="split">
+      <div class="split-side">
+        <h2 class="view-title">Analyse heuristique</h2>
+        <p class="section-note">
+          Mesures objectives calculées sur vos pixels : contraste, zones où un texte resterait lisible,
+          équilibre de la composition, netteté. <strong>Aucun taux de clic n'est prédit</strong> — il faudrait
+          pour cela vos impressions et vos clics réels.
+        </p>
+
+        <div class="dropzone" id="analysis-dropzone" role="button" tabindex="0"
+             aria-label="Choisir une image à analyser">
+          <span class="dropzone-ico" data-icon="image"></span>
+          <strong>Glissez une image ici</strong>
+          <span>ou touchez pour choisir un fichier</span>
+          <small>PNG, JPEG, WebP · jamais envoyé nulle part</small>
+        </div>
+        <input type="file" id="analysis-file" accept="image/*" hidden>
+
+        <div class="button-row is-wrap">
+          <button type="button" class="btn btn-ghost btn-sm" id="analysis-use-current">
+            <span class="btn-ico" data-icon="wand"></span>Analyser la miniature en cours
+          </button>
+        </div>
+        <p class="hint" id="analysis-source"></p>
+
+        <div class="canvas-holder">
+          <canvas id="analysis-overlay" width="640" height="360"
+                  aria-label="Image analysée avec les zones de texte et la grille des tiers"></canvas>
+          <p class="canvas-legend">
+            <span><i class="dot is-good"></i>zone propice au texte</span>
+            <span><i class="dot is-fair"></i>correcte</span>
+            <span><i class="dot is-poor"></i>risquée</span>
+            <span><i class="dot is-focus"></i>point d'attention</span>
+          </p>
+        </div>
+
+        <div class="field">
+          <label for="analysis-title">Titre YouTube</label>
+          <input type="text" id="analysis-title" maxlength="200" autocomplete="off"
+                 placeholder="Ex. 3 erreurs de miniature qui coûtent des clics">
+        </div>
+        <div class="title-preview" id="analysis-title-preview"></div>
+
+        <div class="field">
+          <label for="analysis-topic">Sujet de la vidéo</label>
+          <textarea id="analysis-topic" rows="2"
+                    placeholder="Ex. améliorer les miniatures pour les créateurs débutants"></textarea>
+        </div>
+
+        <button type="button" class="btn btn-primary btn-block" id="analysis-run">
+          <span class="btn-ico" data-icon="chart"></span>Lancer l'analyse
+        </button>
+      </div>
+
+      <div class="split-main">
+        <div class="empty-state" id="analysis-empty">
+          <span class="empty-ico" data-icon="target"></span>
+          <h3>Aucune analyse pour l'instant</h3>
+          <p>Chargez une image (ou analysez la miniature en cours d'édition), ajoutez votre titre, puis lancez
+            l'analyse. Le rapport explique chaque mesure et la règle utilisée.</p>
+        </div>
+        <div id="analysis-results" class="results" hidden></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================== IDÉES -->
+  <section class="view" id="view-ideas" role="tabpanel" aria-labelledby="tab-ideas" hidden>
+    <div class="ideas">
+      <div class="ideas-form">
+        <h2 class="view-title">Générateur d'idées</h2>
+        <div id="ideas-notice"></div>
+
+        <div class="field">
+          <label for="ideas-topic">Sujet de la vidéo <span class="req">*</span></label>
+          <input type="text" id="ideas-topic" maxlength="120" autocomplete="off"
+                 placeholder="Ex. réussir ses miniatures YouTube">
+        </div>
+        <div class="field">
+          <label for="ideas-audience">Audience visée (optionnel)</label>
+          <input type="text" id="ideas-audience" maxlength="80" autocomplete="off"
+                 placeholder="Ex. créateurs débutants francophones">
+        </div>
+        <div class="field">
+          <label for="ideas-tone">Ton éditorial</label>
+          <select id="ideas-tone"></select>
+        </div>
+        <div class="button-row is-wrap">
+          <button type="button" class="btn btn-primary" id="ideas-run">
+            <span class="btn-ico" data-icon="sparkles"></span>Générer 5 idées
+          </button>
+          <button type="button" class="btn btn-ghost" id="ideas-regenerate">
+            <span class="btn-ico" data-icon="refresh"></span>Autre tirage
+          </button>
+        </div>
+        <p class="hint" id="ideas-meta"></p>
+      </div>
+
+      <div class="empty-state" id="ideas-empty">
+        <span class="empty-ico" data-icon="sparkles"></span>
+        <h3>5 idées de titres + concepts de miniature</h3>
+        <p>Chaque idée propose un titre, le texte à poser sur la miniature, une mise en page, une palette et
+          l'angle éditorial. Les titres sont ensuite passés à travers nos propres heuristiques (longueur,
+          accroche, précision) : le meilleur candidat de chaque angle est conservé.</p>
+      </div>
+      <div id="ideas-results" class="ideas-grid" hidden></div>
+    </div>
+  </section>
+</main>
+
+<footer class="app-footer">
+  <p>
+    <strong>CTR Studio AI</strong> — éditeur de miniatures, analyse heuristique et générateur d'idées.
+    Application statique, sans compte, sans API payante, sans envoi de données.
+  </p>
+  <p class="footer-note">
+    Les scores d'analyse et les idées générées sont des aides locales explicitement étiquetées :
+    ils ne prédisent pas un taux de clic réel.
+  </p>
+</footer>
+
+<!-- ============================================================ MODALES -->
+<div class="modal" id="text-modal" hidden>
+  <div class="modal-backdrop" data-close></div>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="text-modal-title">
+    <header class="sheet-head">
+      <h2 id="text-modal-title">Modifier le texte</h2>
+      <button type="button" class="icon-btn" data-close aria-label="Fermer et annuler">✕</button>
+    </header>
+    <div class="sheet-body">
+      <label class="sr-only" for="text-modal-input">Texte du calque</label>
+      <textarea id="text-modal-input" rows="3" maxlength="400" spellcheck="false"
+                placeholder="Votre accroche… (Entrée pour une nouvelle ligne)"></textarea>
+      <p class="hint">Les réglages ci-dessous s'appliquent en direct sur la miniature. Ctrl+Entrée pour valider,
+        Échap pour annuler.</p>
+      <div id="text-modal-quick"></div>
+    </div>
+    <footer class="sheet-foot">
+      <button type="button" class="btn btn-ghost" data-close>Annuler</button>
+      <button type="button" class="btn btn-primary" id="text-modal-apply">Valider</button>
+    </footer>
+  </div>
+</div>
+
+<div class="modal" id="about-modal" hidden>
+  <div class="modal-backdrop" data-close></div>
+  <div class="sheet sheet-wide" role="dialog" aria-modal="true" aria-labelledby="about-title">
+    <header class="sheet-head">
+      <h2 id="about-title">À propos de CTR Studio AI</h2>
+      <button type="button" class="icon-btn" data-close aria-label="Fermer">✕</button>
+    </header>
+    <div class="sheet-body about-body">
+      <section>
+        <h3>Ce que fait l'application</h3>
+        <ul>
+          <li><strong>Éditeur de miniatures</strong> : photo importée placée sur une toile 1280×720, calques de
+            texte déplaçables, typographie, contours, ombres, fonds et dégradés, trois modèles de départ,
+            export PNG réel.</li>
+          <li><strong>Analyse heuristique</strong> : contraste, lisibilité potentielle du texte sur 6 zones,
+            composition (tiers, zones libres, bords), netteté, couleur, conformité technique et règles de titre.</li>
+          <li><strong>Générateur d'idées</strong> : 5 titres + concepts de miniature combinés localement à partir
+            de votre sujet.</li>
+        </ul>
+      </section>
+      <section>
+        <h3>Ce qu'elle ne fait pas</h3>
+        <ul>
+          <li>Elle <strong>ne prédit pas de taux de clic</strong>. Sans impressions et clics réels, aucune
+            prédiction de CTR n'est honnête — les scores mesurent des propriétés d'image, rien de plus.</li>
+          <li>Elle n'appelle <strong>aucune API</strong>, aucun service payant, aucun modèle distant.</li>
+          <li>Elle ne simule <strong>jamais</strong> un export : le PNG est vérifié (signature, en-tête IHDR,
+            dimensions, décodage) avant d'être annoncé comme réussi.</li>
+        </ul>
+      </section>
+      <section>
+        <h3>Vie privée</h3>
+        <p>Vos photos, titres et projets restent dans le navigateur (mémoire et <code>localStorage</code>).
+          Rien n'est envoyé. Effacez la sauvegarde locale depuis le panneau Export &gt; Projet.</p>
+      </section>
+      <section>
+        <h3>Raccourcis</h3>
+        <dl class="shortcuts">
+          <dt>Ctrl / ⌘ + Z</dt><dd>Annuler</dd>
+          <dt>Ctrl / ⌘ + Maj + Z</dt><dd>Rétablir</dd>
+          <dt>Ctrl / ⌘ + S</dt><dd>Exporter le PNG</dd>
+          <dt>Ctrl / ⌘ + D</dt><dd>Dupliquer le calque</dd>
+          <dt>Flèches</dt><dd>Déplacer de 1 px (10 px avec Maj)</dd>
+          <dt>Suppr</dt><dd>Supprimer le calque</dd>
+          <dt>Entrée</dt><dd>Éditer le texte du calque sélectionné</dd>
+          <dt>Échap</dt><dd>Désélectionner / fermer</dd>
+        </dl>
+      </section>
+      <section>
+        <h3>Compatibilité</h3>
+        <p>Chrome et Edge (desktop et Android), Firefox, Safari 15+. Si <code>ctx.filter</code> manque
+          (Safari &lt; 18), les réglages photo sont appliqués pixel par pixel : le résultat exporté reste
+          identique, l'opération est simplement un peu plus longue.</p>
+      </section>
+    </div>
+    <footer class="sheet-foot">
+      <button type="button" class="btn btn-primary" data-close>Fermer</button>
+    </footer>
+  </div>
+</div>
+
+<div class="toast-stack" id="toasts" role="status" aria-live="polite"></div>
+<p class="sr-only" id="a11y-live" aria-live="polite"></p>
+
+<input type="file" id="photo-input" accept="image/*" hidden>
+<input type="file" id="font-input" accept=".ttf,.otf,.woff,.woff2,font/*" hidden>
+<input type="file" id="project-import-input" accept="application/json,.json" hidden>
+
+<noscript>
+  <p class="noscript">CTR Studio AI fonctionne entièrement en JavaScript dans votre navigateur.
+    Activez JavaScript pour utiliser l'éditeur.</p>
+</noscript>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>

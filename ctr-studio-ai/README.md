@@ -271,7 +271,7 @@ ctr-studio-ai/src/
 
 | Hébergeur | Commande |
 | --- | --- |
-| **GitHub Pages** | pousser le dossier puis activer Pages ; chemins relatifs ⇒ fonctionne dans `/nom-du-depot/` |
+| **GitHub Pages** | `node tools/deploy-pages.mjs` (copie l'app dans `/docs` à la racine du dépôt), commit + push, puis activer Pages avec source = branche + `/docs` ; chemins relatifs ⇒ fonctionne dans `/nom-du-depot/` |
 | **Netlify** | `netlify deploy --prod --dir ctr-studio-ai` (build command : vide) |
 | **Vercel** | `vercel deploy --prod` avec *Root Directory* = `ctr-studio-ai`, Framework = *Other* |
 | **Cloudflare Pages** | dossier `ctr-studio-ai`, commande de build vide |
