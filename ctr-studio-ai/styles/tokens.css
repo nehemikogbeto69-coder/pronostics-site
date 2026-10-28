@@ -1,0 +1,84 @@
+/* ==========================================================================
+   CTR Studio AI — jetons de design
+   Thème sombre premium, accents violets. Mobile-first.
+   ========================================================================== */
+
+:root {
+  /* Fonds */
+  --bg-app: #07040d;
+  --bg-app-2: #0b0714;
+  --bg-panel: #100a1c;
+  --bg-panel-2: #150e24;
+  --bg-raised: #1b1230;
+  --bg-field: #17102a;
+  --bg-field-hover: #1e1533;
+
+  /* Traits */
+  --line: #2b1f42;
+  --line-soft: #221838;
+  --line-strong: #3d2c5c;
+
+  /* Textes */
+  --text: #f5f0fc;
+  --text-dim: #c3b6dd;
+  --text-mute: #8d7fad;
+  --text-faint: #6c608a;
+
+  /* Accents */
+  --accent: #a855f7;
+  --accent-2: #c084fc;
+  --accent-deep: #7c3aed;
+  --accent-ink: #1a0b2e;
+  --accent-glow: rgba(168, 85, 247, 0.35);
+  --accent-soft-bg: rgba(168, 85, 247, 0.12);
+  --gradient-brand: linear-gradient(135deg, #7c3aed 0%, #a855f7 55%, #ec4899 130%);
+
+  /* États */
+  --ok: #34d399;
+  --ok-bg: rgba(52, 211, 153, 0.12);
+  --warn: #fbbf24;
+  --warn-bg: rgba(251, 191, 36, 0.12);
+  --err: #fb7185;
+  --err-bg: rgba(251, 113, 133, 0.12);
+  --info: #60a5fa;
+  --info-bg: rgba(96, 165, 250, 0.12);
+
+  /* Formes */
+  --r-xs: 6px;
+  --r-sm: 9px;
+  --r-md: 13px;
+  --r-lg: 18px;
+  --r-xl: 26px;
+  --r-pill: 999px;
+
+  /* Ombres */
+  --sh-1: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --sh-2: 0 6px 18px rgba(0, 0, 0, 0.4);
+  --sh-3: 0 18px 44px rgba(0, 0, 0, 0.55);
+  --sh-glow: 0 0 0 1px rgba(168, 85, 247, 0.35), 0 10px 34px rgba(124, 58, 237, 0.28);
+
+  /* Typographie */
+  --font-ui: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", "Courier New", monospace;
+  --fs-xs: 11.5px;
+  --fs-sm: 12.5px;
+  --fs-base: 14px;
+  --fs-md: 15.5px;
+  --fs-lg: 18px;
+  --fs-xl: 22px;
+  --fs-2xl: 28px;
+
+  /* Espacements */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 22px;
+  --sp-6: 30px;
+
+  /* Divers */
+  --header-h: 60px;
+  --inspector-w: 384px;
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
